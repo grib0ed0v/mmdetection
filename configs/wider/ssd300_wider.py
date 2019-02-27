@@ -1,5 +1,5 @@
 # model settings
-input_size = 512
+input_size = 300
 model = dict(
     type='SingleStageDetector',
     pretrained='open-mmlab://vgg16_caffe',
@@ -16,11 +16,11 @@ model = dict(
     bbox_head=dict(
         type='SSDHead',
         input_size=input_size,
-        in_channels=(512, 1024, 512, 256, 256, 256, 256),
-        num_classes=81,
-        anchor_strides=(8, 16, 32, 64, 128, 256, 512),
-        basesize_ratio_range=(0.1, 0.9),
-        anchor_ratios=([2], [2, 3], [2, 3], [2, 3], [2, 3], [2], [2]),
+        in_channels=(512, 1024, 512, 256, 256, 256),
+        num_classes=2,
+        anchor_strides=(8, 16, 32, 64, 100, 300),
+        basesize_ratio_range=(0.15, 0.9),
+        anchor_ratios=([2], [2, 3], [2, 3], [2, 3], [2], [2]),
         target_means=(.0, .0, .0, .0),
         target_stds=(0.1, 0.1, 0.2, 0.2)))
 cudnn_benchmark = True
@@ -44,20 +44,22 @@ test_cfg = dict(
     max_per_img=200)
 # model training and testing settings
 # dataset settings
-dataset_type = 'CocoDataset'
-data_root = 'data/coco/'
+dataset_type = 'WIDERDataset'
+data_root = 'data/WIDER/'
 img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[1, 1, 1], to_rgb=True)
 data = dict(
-    imgs_per_gpu=8,
-    workers_per_gpu=3,
+    imgs_per_gpu=60,
+    workers_per_gpu=2,
     train=dict(
         type='RepeatDataset',
-        times=5,
+        times=2,
         dataset=dict(
             type=dataset_type,
-            ann_file=data_root + 'annotations/instances_train2017.json',
-            img_prefix=data_root + 'train2017/',
-            img_scale=(512, 512),
+            ann_file=[
+                data_root + 'train.txt',
+            ],
+            img_prefix=[data_root + 'WIDER_train/'],
+            img_scale=(300, 300),
             img_norm_cfg=img_norm_cfg,
             size_divisor=None,
             flip_ratio=0.5,
@@ -80,9 +82,9 @@ data = dict(
             resize_keep_ratio=False)),
     val=dict(
         type=dataset_type,
-        ann_file=data_root + 'annotations/instances_val2017.json',
-        img_prefix=data_root + 'val2017/',
-        img_scale=(512, 512),
+        ann_file=data_root + '/val.txt',
+        img_prefix=data_root + 'WIDER_val/',
+        img_scale=(300, 300),
         img_norm_cfg=img_norm_cfg,
         size_divisor=None,
         flip_ratio=0,
@@ -92,11 +94,9 @@ data = dict(
         resize_keep_ratio=False),
     test=dict(
         type=dataset_type,
-        # ann_file=data_root + 'annotations/instances_val2017.json',
-        # img_prefix=data_root + 'val2017/',
-        ann_file=data_root + 'annotations/image_info_test-dev2017.json',
-        img_prefix=data_root + 'test2017/',
-        img_scale=(512, 512),
+        ann_file=data_root + '/val.txt',
+        img_prefix=data_root + 'WIDER_val/',
+        img_scale=(300, 300),
         img_norm_cfg=img_norm_cfg,
         size_divisor=None,
         flip_ratio=0,
@@ -105,19 +105,19 @@ data = dict(
         test_mode=True,
         resize_keep_ratio=False))
 # optimizer
-optimizer = dict(type='SGD', lr=2e-3, momentum=0.9, weight_decay=5e-4)
-optimizer_config = dict()
+optimizer = dict(type='SGD', lr=1e-3, momentum=0.9, weight_decay=5e-4)
+optimizer_config = dict(grad_clip=dict(max_norm=3, norm_type=2))
 # learning policy
 lr_config = dict(
     policy='step',
     warmup='linear',
-    warmup_iters=500,
+    warmup_iters=1000,
     warmup_ratio=1.0 / 3,
-    step=[16, 22])
+    step=[16, 20])
 checkpoint_config = dict(interval=1)
 # yapf:disable
 log_config = dict(
-    interval=50,
+    interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
         # dict(type='TensorboardLoggerHook')
@@ -127,7 +127,7 @@ log_config = dict(
 total_epochs = 24
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
-work_dir = './work_dirs/ssd512_coco'
+work_dir = './work_dirs/ssd300_wider'
 load_from = None
 resume_from = None
 workflow = [('train', 1)]
