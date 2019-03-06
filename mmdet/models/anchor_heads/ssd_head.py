@@ -109,7 +109,12 @@ class SSDHead(AnchorHead):
     def loss_single(self, cls_score, bbox_pred, labels, label_weights,
                     bbox_targets, bbox_weights, num_total_samples, cfg):
         loss_cls_all = F.cross_entropy(
-            cls_score, labels, reduction='none') * label_weights
+            cls_score, labels, reduction='none')
+
+        #focal loss
+        p_cla_all = torch.exp(-loss_cls_all)
+        loss_cls_all = (1 - p_cla_all) ** 2 * loss_cls_all * label_weights
+
         pos_inds = (labels > 0).nonzero().view(-1)
         neg_inds = (labels == 0).nonzero().view(-1)
 
@@ -121,6 +126,17 @@ class SSDHead(AnchorHead):
         loss_cls_pos = loss_cls_all[pos_inds].sum()
         loss_cls_neg = topk_loss_cls_neg.sum()
         loss_cls = (loss_cls_pos + loss_cls_neg) / num_total_samples
+
+        # for debug
+        if torch.sum(torch.isnan(bbox_pred)):
+            print(bbox_pred)
+            print('pred')
+        if torch.sum(torch.isnan(bbox_targets)):
+            print(bbox_targets)
+            print('targ')
+        if torch.sum(torch.isnan(bbox_weights)):
+            print(bbox_weights)
+            print('weights')
 
         loss_reg = weighted_smoothl1(
             bbox_pred,
