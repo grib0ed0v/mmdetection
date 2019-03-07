@@ -10,6 +10,45 @@ from .anchor_head import AnchorHead
 from ..registry import HEADS
 
 
+def generalized_iou_loss(pred, target, reduction='mean'):
+    assert pred.size() == target.size() and target.numel() > 0
+
+    bboxes1 = pred
+    bboxes2 = target
+    lt = torch.max(bboxes1[:, :2], bboxes2[:, :2])  # [rows, 2]
+    rb = torch.min(bboxes1[:, 2:], bboxes2[:, 2:])  # [rows, 2]
+
+    wh = (rb - lt + 1).clamp(min=0)  # [rows, 2]
+    overlap = wh[:, 0] * wh[:, 1]
+
+    area1 = (bboxes1[:, 2] - bboxes1[:, 0] + 1) * (
+        bboxes1[:, 3] - bboxes1[:, 1] + 1)
+
+    area2 = (bboxes2[:, 2] - bboxes2[:, 0] + 1) * (
+        bboxes2[:, 3] - bboxes2[:, 1] + 1)
+    ious = overlap / (area1 + area2 - overlap)
+
+    lt = torch.min(bboxes1[:, :2], bboxes2[:, :2])  # [rows, 2]
+    rb = torch.max(bboxes1[:, 2:], bboxes2[:, 2:])  # [rows, 2]
+    wh = (rb - lt + 1).clamp(min=0)  # [rows, 2]
+    ac = wh[:, 0] * wh[:, 1]
+    loss = 1 - ious + (ac - overlap) / (ac + 1e-7) #1 - (ious - (ac - overlap) / ac)
+
+    reduction_enum = F._Reduction.get_enum(reduction)
+    # none: 0, mean:1, sum: 2
+    if reduction_enum == 0:
+        return loss
+    elif reduction_enum == 1:
+        return loss.sum() / pred.numel()
+    elif reduction_enum == 2:
+        return loss.sum()
+
+def weighted_generalized_iou(pred, target, weight, avg_factor=None):
+    if avg_factor is None:
+        avg_factor = torch.sum(weight > 0).float().item() / 4 + 1e-6
+    loss = generalized_iou_loss(pred, target, reduction='none')
+    return torch.sum(loss * weight)[None] / avg_factor
+
 @HEADS.register_module
 class SSDHead(AnchorHead):
 
@@ -112,8 +151,8 @@ class SSDHead(AnchorHead):
             cls_score, labels, reduction='none')
 
         #focal loss
-        p_cla_all = torch.exp(-loss_cls_all)
-        loss_cls_all = (1 - p_cla_all) ** 2 * loss_cls_all * label_weights
+        #p_cls_all = torch.exp(-loss_cls_all)
+        #loss_cls_all = torch.pow(1 - p_cls_all, 2) * loss_cls_all * label_weights
 
         pos_inds = (labels > 0).nonzero().view(-1)
         neg_inds = (labels == 0).nonzero().view(-1)
@@ -138,11 +177,12 @@ class SSDHead(AnchorHead):
             print(bbox_weights)
             print('weights')
 
-        loss_reg = weighted_smoothl1(
+        #print(bbox_weights.shape)
+        #print(torch.max(torch.sum(bbox_weights, dim=1)))
+        loss_reg = weighted_generalized_iou(
             bbox_pred,
             bbox_targets,
-            bbox_weights,
-            beta=cfg.smoothl1_beta,
+            torch.sum(bbox_weights, dim=1) / 4,
             avg_factor=num_total_samples)
         return loss_cls[None], loss_reg
 
