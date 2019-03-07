@@ -26,7 +26,9 @@ def generalized_iou_loss(pred, target, reduction='mean'):
 
     area2 = (bboxes2[:, 2] - bboxes2[:, 0] + 1) * (
         bboxes2[:, 3] - bboxes2[:, 1] + 1)
-    ious = overlap / (area1 + area2 - overlap)
+    ious = overlap / (area1 + area2 - overlap + 1e-7)
+    if ((area1 + area2 - overlap).nonzero().size(0) > 0):
+        print('Zero in iou')
 
     lt = torch.min(bboxes1[:, :2], bboxes2[:, :2])  # [rows, 2]
     rb = torch.max(bboxes1[:, 2:], bboxes2[:, 2:])  # [rows, 2]
@@ -151,8 +153,11 @@ class SSDHead(AnchorHead):
             cls_score, labels, reduction='none')
 
         #focal loss
-        #p_cls_all = torch.exp(-loss_cls_all)
-        #loss_cls_all = torch.pow(1 - p_cls_all, 2) * loss_cls_all * label_weights
+        if cfg.use_focal:
+            p_cls_all = torch.exp(-loss_cls_all)
+            loss_cls_all = torch.pow(1 - p_cls_all, 2.) * loss_cls_all
+
+        loss_cls_all = loss_cls_all * label_weights
 
         pos_inds = (labels > 0).nonzero().view(-1)
         neg_inds = (labels == 0).nonzero().view(-1)
@@ -177,13 +182,19 @@ class SSDHead(AnchorHead):
             print(bbox_weights)
             print('weights')
 
-        #print(bbox_weights.shape)
-        #print(torch.max(torch.sum(bbox_weights, dim=1)))
-        loss_reg = weighted_generalized_iou(
-            bbox_pred,
-            bbox_targets,
-            torch.sum(bbox_weights, dim=1) / 4,
-            avg_factor=num_total_samples)
+        if cfg.use_giou:
+            loss_reg = weighted_generalized_iou(
+                bbox_pred,
+                bbox_targets,
+                torch.sum(bbox_weights, dim=1) / 4,
+                avg_factor=num_total_samples)
+        else:
+            loss_reg = weighted_smoothl1(
+                bbox_pred,
+                bbox_targets,
+                bbox_weights,
+                beta=cfg.smoothl1_beta,
+                avg_factor=num_total_samples)
         return loss_cls[None], loss_reg
 
     def loss(self,

@@ -78,10 +78,12 @@ class SSDVGG(VGG):
         for i, layer in enumerate(self.features):
             x = layer(x)
             if i in self.out_feature_indices:
+                print(x.shape)
                 outs.append(x)
         for i, layer in enumerate(self.extra):
             x = F.relu(layer(x), inplace=True)
             if i % 2 == 1:
+                print(x.shape)
                 outs.append(x)
         outs[0] = self.l2_norm(outs[0])
         if len(outs) == 1:
