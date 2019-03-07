@@ -90,7 +90,8 @@ class SSDMobilenetV2(nn.Module):
         self.out_feature_indices = []
         input_channel = int(input_channel * width_mult)
         self.last_channel = int(last_channel * width_mult) if width_mult > 1.0 else last_channel
-        self.features = [nn.BatchNorm2d(3), conv_bn(3, input_channel, 2)]
+        self.bn_first = nn.BatchNorm2d(3)
+        self.features = [conv_bn(3, input_channel, 2)]
         # building inverted residual blocks
         for t, c, n, s in interverted_residual_setting:
             output_channel = int(c * width_mult)
@@ -103,15 +104,17 @@ class SSDMobilenetV2(nn.Module):
                 if s == 2 and i == n - 1:
                     self.out_feature_indices.append(len(self.features) - 1)
         # building last several layers
-        self.features.append(conv_1x1_bn(input_channel, self.last_channel))
-        self.out_feature_indices.append(len(self.features) - 1)
+        self.extra_conv = conv_1x1_bn(input_channel, self.last_channel)
+        #self.out_feature_indices.append(len(self.features) - 1)
         # make it nn.Sequential
         self.features = nn.Sequential(*self.features)
 
     def init_weights(self, pretrained=None):
         if isinstance(pretrained, str):
             logger = logging.getLogger()
-            load_checkpoint(self, pretrained, strict=False, logger=logger)
+            state_dict = torch.load(pretrained)
+            self.load_state_dict(state_dict, strict=False)
+            #load_checkpoint(self, pretrained, strict=False, logger=logger)
         elif pretrained is None:
             for m in self.modules():
                 if isinstance(m, nn.Conv2d):
@@ -125,9 +128,12 @@ class SSDMobilenetV2(nn.Module):
 
     def forward(self, x):
         outs = []
+        x = self.bn_first(x)
         for i, block in enumerate(self.features):
             x = block(x)
             if i in self.out_feature_indices:
                 outs.append(x)
+        x = self.extra_conv(x)
+        outs.append(x)
 
         return tuple(outs)
