@@ -27,8 +27,6 @@ def generalized_iou_loss(pred, target, reduction='mean'):
     area2 = (bboxes2[:, 2] - bboxes2[:, 0] + 1) * (
         bboxes2[:, 3] - bboxes2[:, 1] + 1)
     ious = overlap / (area1 + area2 - overlap + 1e-7)
-    if ((area1 + area2 - overlap).nonzero().size(0) > 0):
-        print('Zero in iou')
 
     lt = torch.min(bboxes1[:, :2], bboxes2[:, :2])  # [rows, 2]
     rb = torch.max(bboxes1[:, 2:], bboxes2[:, 2:])  # [rows, 2]
