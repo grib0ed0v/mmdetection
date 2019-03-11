@@ -47,7 +47,7 @@ def anchor_target(anchor_list,
     if gt_labels_list is None:
         gt_labels_list = [None for _ in range(num_imgs)]
     (all_labels, all_label_weights, all_bbox_targets, all_bbox_weights,
-     pos_inds_list, neg_inds_list) = multi_apply(
+     pos_inds_list, neg_inds_list, all_anchors) = multi_apply(
          anchor_target_single,
          anchor_list,
          valid_flag_list,
@@ -73,7 +73,7 @@ def anchor_target(anchor_list,
     bbox_targets_list = images_to_levels(all_bbox_targets, num_level_anchors)
     bbox_weights_list = images_to_levels(all_bbox_weights, num_level_anchors)
     return (labels_list, label_weights_list, bbox_targets_list,
-            bbox_weights_list, num_total_pos, num_total_neg)
+            bbox_weights_list, num_total_pos, num_total_neg, all_anchors)
 
 
 def images_to_levels(target, num_level_anchors):
@@ -107,7 +107,7 @@ def anchor_target_single(flat_anchors,
                                        img_meta['img_shape'][:2],
                                        cfg.allowed_border)
     if not inside_flags.any():
-        return (None, ) * 6
+        return (None, ) * 7
     # assign gt and sample anchors
     anchors = flat_anchors[inside_flags, :]
 
@@ -131,7 +131,7 @@ def anchor_target_single(flat_anchors,
     pos_inds = sampling_result.pos_inds
     neg_inds = sampling_result.neg_inds
     if len(pos_inds) > 0:
-        pos_bbox_targets = bbox2delta(sampling_result.pos_bboxes,
+        pos_bbox_targets = bbox2delta(sampling_result.pos_bboxes, #same as anchors[pos_inds]
                                       sampling_result.pos_gt_bboxes,
                                       target_means, target_stds)
         bbox_targets[pos_inds, :] = pos_bbox_targets
@@ -159,7 +159,7 @@ def anchor_target_single(flat_anchors,
         bbox_weights = unmap(bbox_weights, num_total_anchors, inside_flags)
 
     return (labels, label_weights, bbox_targets, bbox_weights, pos_inds,
-            neg_inds)
+            neg_inds, anchors)
 
 
 def expand_binary_labels(labels, label_weights, label_channels):

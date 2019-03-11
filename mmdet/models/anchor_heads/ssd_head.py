@@ -5,16 +5,16 @@ import torch.nn.functional as F
 from mmcv.cnn import xavier_init
 
 from mmdet.core import (AnchorGenerator, anchor_target, weighted_smoothl1,
-                        multi_apply)
+                        multi_apply, delta2bbox)
 from .anchor_head import AnchorHead
 from ..registry import HEADS
 
 
-def generalized_iou_loss(pred, target, reduction='mean'):
+def generalized_iou_loss(pred, target, anchors, means, stds, reduction='mean'):
     assert pred.size() == target.size() and target.numel() > 0
 
-    bboxes1 = pred
-    bboxes2 = target
+    bboxes1 = delta2bbox(anchors, pred, means, stds)
+    bboxes2 = delta2bbox(anchors, target, means, stds)
     lt = torch.max(bboxes1[:, :2], bboxes2[:, :2])  # [rows, 2]
     rb = torch.min(bboxes1[:, 2:], bboxes2[:, 2:])  # [rows, 2]
 
@@ -43,10 +43,10 @@ def generalized_iou_loss(pred, target, reduction='mean'):
     elif reduction_enum == 2:
         return loss.sum()
 
-def weighted_generalized_iou(pred, target, weight, avg_factor=None):
+def weighted_generalized_iou(pred, target, anchors, means, stds, weight, avg_factor=None):
     if avg_factor is None:
         avg_factor = torch.sum(weight > 0).float().item() / 4 + 1e-6
-    loss = generalized_iou_loss(pred, target, reduction='none')
+    loss = generalized_iou_loss(pred, target, anchors, means, stds, reduction='none')
     return torch.sum(loss * weight)[None] / avg_factor
 
 @HEADS.register_module
@@ -145,7 +145,7 @@ class SSDHead(AnchorHead):
             bbox_preds.append(reg_conv(feat))
         return cls_scores, bbox_preds
 
-    def loss_single(self, cls_score, bbox_pred, labels, label_weights,
+    def loss_single(self, cls_score, anchors, bbox_pred, labels, label_weights,
                     bbox_targets, bbox_weights, num_total_samples, cfg):
         loss_cls_all = F.cross_entropy(
             cls_score, labels, reduction='none')
@@ -184,6 +184,9 @@ class SSDHead(AnchorHead):
             loss_reg = weighted_generalized_iou(
                 bbox_pred,
                 bbox_targets,
+                anchors,
+                self.target_means,
+                self.target_stds,
                 torch.sum(bbox_weights, dim=1) / 4,
                 avg_factor=num_total_samples)
         else:
@@ -224,7 +227,7 @@ class SSDHead(AnchorHead):
         if cls_reg_targets is None:
             return None
         (labels_list, label_weights_list, bbox_targets_list, bbox_weights_list,
-         num_total_pos, num_total_neg) = cls_reg_targets
+         num_total_pos, num_total_neg, all_anchors) = cls_reg_targets
 
         num_images = len(img_metas)
         all_cls_scores = torch.cat([
@@ -246,6 +249,7 @@ class SSDHead(AnchorHead):
         losses_cls, losses_reg = multi_apply(
             self.loss_single,
             all_cls_scores,
+            all_anchors,
             all_bbox_preds,
             all_labels,
             all_label_weights,
