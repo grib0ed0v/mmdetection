@@ -60,7 +60,8 @@ class SSDHead(AnchorHead):
                  basesize_ratio_range=(0.1, 0.9),
                  anchor_ratios=([2], [2, 3], [2, 3], [2, 3], [2], [2]),
                  target_means=(.0, .0, .0, .0),
-                 target_stds=(1.0, 1.0, 1.0, 1.0)):
+                 target_stds=(1.0, 1.0, 1.0, 1.0),
+                 depthwise_heads=False):
         super(AnchorHead, self).__init__()
         self.input_size = input_size
         self.num_classes = num_classes
@@ -70,18 +71,34 @@ class SSDHead(AnchorHead):
         reg_convs = []
         cls_convs = []
         for i in range(len(in_channels)):
-            reg_convs.append(
-                nn.Conv2d(
+            if depthwise_heads:
+                reg_conv = nn.Sequential(
+                    nn.Conv2d(in_channels[i], in_channels[i],
+                              kernel_size=3, padding=1, groups=in_channels[i]),
+                    nn.BatchNorm2d(in_channels[i]),
+                    nn.ReLU6(inplace=True),
+                    nn.Conv2d(in_channels[i], num_anchors[i] * 4,
+                              kernel_size=1, padding=0))
+                cls_conv = nn.Sequential(
+                    nn.Conv2d(in_channels[i], in_channels[i],
+                              kernel_size=3, padding=1, groups=in_channels[i]),
+                    nn.BatchNorm2d(in_channels[i]),
+                    nn.ReLU6(inplace=True),
+                    nn.Conv2d(in_channels[i], num_anchors[i] * num_classes,
+                              kernel_size=1, padding=0))
+            else:
+                reg_conv = nn.Conv2d(
                     in_channels[i],
                     num_anchors[i] * 4,
                     kernel_size=3,
-                    padding=1))
-            cls_convs.append(
-                nn.Conv2d(
+                    padding=1)
+                cls_conv = nn.Conv2d(
                     in_channels[i],
                     num_anchors[i] * num_classes,
                     kernel_size=3,
-                    padding=1))
+                    padding=1)
+            reg_convs.append(reg_conv)
+            cls_convs.append(cls_conv)
         self.reg_convs = nn.ModuleList(reg_convs)
         self.cls_convs = nn.ModuleList(cls_convs)
 
@@ -108,6 +125,9 @@ class SSDHead(AnchorHead):
             elif basesize_ratio_range[0] == 0.15:  # SSD512 VOC
                 min_sizes.insert(0, int(input_size * 7 / 100))
                 max_sizes.insert(0, int(input_size * 15 / 100))
+        else:
+            min_sizes.insert(0, int(input_size * basesize_ratio_range[0] / 2))
+            max_sizes.insert(0, int(input_size * basesize_ratio_range[0]))
         self.anchor_generators = []
         self.anchor_strides = anchor_strides
         for k in range(len(anchor_strides)):
@@ -196,7 +216,7 @@ class SSDHead(AnchorHead):
                 bbox_weights,
                 beta=cfg.smoothl1_beta,
                 avg_factor=num_total_samples)
-        return loss_cls[None], loss_reg
+        return loss_cls[None], loss_reg * 2
 
     def loss(self,
              cls_scores,
