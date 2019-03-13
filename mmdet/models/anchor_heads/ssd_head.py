@@ -208,7 +208,7 @@ class SSDHead(AnchorHead):
                 self.target_means,
                 self.target_stds,
                 torch.sum(bbox_weights, dim=1) / 4,
-                avg_factor=num_total_samples)
+                avg_factor=num_total_samples) * 2
         else:
             loss_reg = weighted_smoothl1(
                 bbox_pred,
@@ -216,7 +216,7 @@ class SSDHead(AnchorHead):
                 bbox_weights,
                 beta=cfg.smoothl1_beta,
                 avg_factor=num_total_samples)
-        return loss_cls[None], loss_reg * 2
+        return loss_cls[None], loss_reg
 
     def loss(self,
              cls_scores,

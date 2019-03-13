@@ -9,7 +9,7 @@ def get_model_complexity_info(model, input_res, print_per_layer_stat=True, as_st
     flops_model = add_flops_counting_methods(model)
     flops_model.eval().start_flops_count()
 
-    data =  dict(img=[batch], img_meta=[{}])
+    data = dict(img=[batch], img_meta=[{}])
     out = flops_model(return_loss=False, rescale=True, **data)
 
     if print_per_layer_stat:
@@ -360,8 +360,6 @@ def main():
     with torch.no_grad():
         flops, params = get_model_complexity_info(model, (cfg.input_size, cfg.input_size), as_strings=True, print_per_layer_stat=True)
         print(flops, params)
-        #result = model(return_loss=False, rescale=not show, **data)
-
 
 if __name__ == '__main__':
     main()
