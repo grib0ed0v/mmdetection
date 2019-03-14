@@ -47,7 +47,7 @@ test_cfg = dict(
 # model training and testing settings
 # dataset settings
 dataset_type = 'WIDERDataset'
-data_root = 'data/'
+data_root = 'data/WIDER'
 img_norm_cfg = dict(mean=[123.675, 116.28, 103.53], std=[1, 1, 1], to_rgb=True)
 data = dict(
     imgs_per_gpu=30,
