@@ -14,6 +14,7 @@ from .env import get_root_logger
 
 
 def parse_losses(losses):
+    loss = losses['loss'].mean()
     log_vars = OrderedDict()
     for loss_name, loss_value in losses.items():
         if isinstance(loss_value, torch.Tensor):
@@ -24,9 +25,9 @@ def parse_losses(losses):
             raise TypeError(
                 '{} is not a tensor or list of tensors'.format(loss_name))
 
-    loss = sum(_value for _key, _value in log_vars.items() if 'loss' in _key)
+    #loss = sum(_value for _key, _value in log_vars.items() if 'loss' in _key)
 
-    log_vars['loss'] = loss
+    #log_vars['loss'] = loss
     for name in log_vars:
         log_vars[name] = log_vars[name].item()
 

@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from mmcv.cnn import xavier_init
 
 from mmdet.core import (AnchorGenerator, anchor_target, weighted_smoothl1,
-                        multi_apply, delta2bbox)
+                        multi_apply, delta2bbox, MultilossAdaptiveBalancer, MultilossSummator)
 from .anchor_head import AnchorHead
 from ..registry import HEADS
 
@@ -61,7 +61,8 @@ class SSDHead(AnchorHead):
                  anchor_ratios=([2], [2, 3], [2, 3], [2, 3], [2], [2]),
                  target_means=(.0, .0, .0, .0),
                  target_stds=(1.0, 1.0, 1.0, 1.0),
-                 depthwise_heads=False):
+                 depthwise_heads=False,
+                 adaptive_loss_weighting=False):
         super(AnchorHead, self).__init__()
         self.input_size = input_size
         self.num_classes = num_classes
@@ -151,6 +152,11 @@ class SSDHead(AnchorHead):
         self.use_sigmoid_cls = False
         self.use_focal_loss = False
 
+        if adaptive_loss_weighting:
+            self.loss_balancer = MultilossAdaptiveBalancer(2)
+        else:
+            self.loss_balancer = MultilossSummator(2)
+
     def init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -189,17 +195,6 @@ class SSDHead(AnchorHead):
         loss_cls_neg = topk_loss_cls_neg.sum()
         loss_cls = (loss_cls_pos + loss_cls_neg) / num_total_samples
 
-        # for debug
-        if torch.sum(torch.isnan(bbox_pred)):
-            print(bbox_pred)
-            print('pred')
-        if torch.sum(torch.isnan(bbox_targets)):
-            print(bbox_targets)
-            print('targ')
-        if torch.sum(torch.isnan(bbox_weights)):
-            print(bbox_weights)
-            print('weights')
-
         if cfg.use_giou:
             loss_reg = weighted_generalized_iou(
                 bbox_pred,
@@ -208,7 +203,7 @@ class SSDHead(AnchorHead):
                 self.target_means,
                 self.target_stds,
                 torch.sum(bbox_weights, dim=1) / 4,
-                avg_factor=num_total_samples) * 2
+                avg_factor=num_total_samples)
         else:
             loss_reg = weighted_smoothl1(
                 bbox_pred,
@@ -277,4 +272,11 @@ class SSDHead(AnchorHead):
             all_bbox_weights,
             num_total_samples=num_total_pos,
             cfg=cfg)
-        return dict(loss_cls=losses_cls, loss_reg=losses_reg)
+
+        losses_cls = sum(_loss.mean() for _loss in losses_cls).view(1, 1)
+        losses_reg = sum(_loss.mean() for _loss in losses_reg).view(1, 1)
+
+        total_loss = self.loss_balancer([losses_cls, losses_reg]).view(1, 1)
+        cls_weight, reg_weight = self.loss_balancer.get_weights()
+        return dict(loss=total_loss, loss_cls=losses_cls, loss_reg=losses_reg,
+                    cls_reg_ratio=torch.Tensor([cls_weight / reg_weight]).to(total_loss.device).view(1, 1))

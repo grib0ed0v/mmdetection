@@ -1,4 +1,5 @@
 # TODO merge naive and weighted loss.
+import math
 import torch
 import torch.nn.functional as F
 
@@ -113,3 +114,36 @@ def accuracy(pred, target, topk=1):
         correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
         res.append(correct_k.mul_(100.0 / pred.size(0)))
     return res[0] if return_single else res
+
+class MultilossAdaptiveBalancer(torch.nn.Module):
+    """Implements multiple losses balancing approach from https://arxiv.org/pdf/1705.07115.pdf"""
+    def __init__(self, num_losses):
+        super(MultilossAdaptiveBalancer, self).__init__()
+        self.weight = torch.nn.Parameter(torch.FloatTensor(num_losses))
+        for i in range(num_losses):
+            self.weight.data[i] = 0.
+
+    def get_weights(self):
+        return [math.exp(-s.item()) for s in self.weight.data]
+
+    def forward(self, losses):
+        assert isinstance(losses, list)
+        assert len(losses) == self.weight.shape[0]
+
+        total_loss = 0
+        for i, loss in enumerate(losses):
+            total_loss += torch.exp(-self.weight[i])*loss + 0.5*self.weight[i]
+
+        return total_loss
+
+class MultilossSummator(torch.nn.Module):
+    def __init__(self, num_losses):
+        super(MultilossSummator, self).__init__()
+        self.num_losses = num_losses
+
+    def get_weights(self):
+        return [1.]*self.num_losses
+
+    def forward(self, losses):
+        assert isinstance(losses, list)
+        return sum(losses)
