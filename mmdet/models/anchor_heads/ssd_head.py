@@ -9,46 +9,6 @@ from mmdet.core import (AnchorGenerator, anchor_target, weighted_smoothl1,
 from .anchor_head import AnchorHead
 from ..registry import HEADS
 
-
-def generalized_iou_loss(pred, target, anchors, means, stds, reduction='mean'):
-    assert pred.size() == target.size() and target.numel() > 0
-
-    bboxes1 = delta2bbox(anchors, pred, means, stds)
-    bboxes2 = delta2bbox(anchors, target, means, stds)
-    lt = torch.max(bboxes1[:, :2], bboxes2[:, :2])  # [rows, 2]
-    rb = torch.min(bboxes1[:, 2:], bboxes2[:, 2:])  # [rows, 2]
-
-    wh = (rb - lt + 1).clamp(min=0)  # [rows, 2]
-    overlap = wh[:, 0] * wh[:, 1]
-
-    area1 = (bboxes1[:, 2] - bboxes1[:, 0] + 1) * (
-        bboxes1[:, 3] - bboxes1[:, 1] + 1)
-
-    area2 = (bboxes2[:, 2] - bboxes2[:, 0] + 1) * (
-        bboxes2[:, 3] - bboxes2[:, 1] + 1)
-    ious = overlap / (area1 + area2 - overlap + 1e-7)
-
-    lt = torch.min(bboxes1[:, :2], bboxes2[:, :2])  # [rows, 2]
-    rb = torch.max(bboxes1[:, 2:], bboxes2[:, 2:])  # [rows, 2]
-    wh = (rb - lt + 1).clamp(min=0)  # [rows, 2]
-    ac = wh[:, 0] * wh[:, 1]
-    loss = 1 - ious + (ac - overlap) / (ac + 1e-7) #1 - (ious - (ac - overlap) / ac)
-
-    reduction_enum = F._Reduction.get_enum(reduction)
-    # none: 0, mean:1, sum: 2
-    if reduction_enum == 0:
-        return loss
-    elif reduction_enum == 1:
-        return loss.sum() / pred.numel()
-    elif reduction_enum == 2:
-        return loss.sum()
-
-def weighted_generalized_iou(pred, target, anchors, means, stds, weight, avg_factor=None):
-    if avg_factor is None:
-        avg_factor = torch.sum(weight > 0).float().item() / 4 + 1e-6
-    loss = generalized_iou_loss(pred, target, anchors, means, stds, reduction='none')
-    return torch.sum(loss * weight)[None] / avg_factor
-
 @HEADS.register_module
 class SSDHead(AnchorHead):
 
