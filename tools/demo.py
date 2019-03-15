@@ -4,6 +4,7 @@ import cv2 as cv
 from mmcv.runner import load_checkpoint
 from mmdet.models import build_detector
 from mmdet.apis import inference_detector, show_result
+from mmdet.core import get_classes
 
 def decode_detections(detections, conf_t=0.5):
     results = []
@@ -16,12 +17,12 @@ def decode_detections(detections, conf_t=0.5):
 
     return results
 
-def draw_detections(frame, detections):
+def draw_detections(frame, detections, class_name):
     """Draws detections and labels"""
     for i, rect in enumerate(detections):
         left, top, right, bottom = rect[0]
         cv.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), thickness=2)
-        label = str('face') + '(' + str(round(rect[1], 2)) + ')'
+        label = class_name + '(' + str(round(rect[1], 2)) + ')'
         label_size, base_line = cv.getTextSize(label, cv.FONT_HERSHEY_SIMPLEX, 1, 1)
         top = max(top, label_size[1])
         cv.rectangle(frame, (left, top - label_size[1]), (left + label_size[0], top + base_line),
@@ -35,7 +36,8 @@ def main():
     parser.add_argument('--cam_id', type=int, default=0, help='Input cam')
     parser.add_argument('config', help='test config file path')
     parser.add_argument('checkpoint', help='checkpoint file')
-    parser.add_argument('--fd_thresh', type=float, default=0.5, help='Threshold for FD')
+    parser.add_argument('--d_thresh', type=float, default=0.5, help='Threshold for FD')
+    parser.add_argument('--dataset', type=str, default='wider', help='Dataset name')
 
     args = parser.parse_args()
 
@@ -49,15 +51,18 @@ def main():
     cap = cv.VideoCapture(args.cam_id)
     cap.set(cv.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, 720)
-    cap.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc('M', 'J', 'P', 'G'))
+    cap.set(cv.CAP_PROP_FOURCC, cv.VideoWriter_fourcc(*'MJPG'))
+
+    class_names = get_classes(args.dataset)
 
     while cv.waitKey(1) != 27:
         has_frame, frame = cap.read()
         if not has_frame:
             return
-        result = inference_detector(model, frame, cfg)
-        boxes = decode_detections(result[0], args.fd_thresh)
-        frame = draw_detections(frame, boxes)
+        results = inference_detector(model, frame, cfg)
+        for i, class_result in enumerate(results):
+            class_boxes = decode_detections(class_result, args.d_thresh)
+            frame = draw_detections(frame, class_boxes, class_names[i])
         cv.imshow('Detection Demo', frame)
 
 if __name__ == '__main__':
