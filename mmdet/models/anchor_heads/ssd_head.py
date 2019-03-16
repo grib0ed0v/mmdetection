@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmcv.cnn import xavier_init
 
-from mmdet.core import (AnchorGenerator, anchor_target, weighted_smoothl1,
+from mmdet.core import (AnchorGenerator, anchor_target, weighted_smoothl1, weighted_generalized_iou,
                         multi_apply, delta2bbox, MultilossAdaptiveBalancer, MultilossSummator)
 from .anchor_head import AnchorHead
 from ..registry import HEADS
