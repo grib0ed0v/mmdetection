@@ -80,8 +80,6 @@ class InvertedResidual(nn.Module):
 class SSDMobilenetV2(nn.Module):
     def __init__(self, input_size):
         super(SSDMobilenetV2, self).__init__()
-
-        assert input_size in (300, 512)
         self.input_size = input_size
 
         width_mult = 1.0
